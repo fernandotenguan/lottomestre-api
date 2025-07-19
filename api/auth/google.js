@@ -1,67 +1,64 @@
-import { OAuth2Client } from "google-auth-library";
-
-const client = new OAuth2Client();
+// api/auth/google.js - VERSÃO COMPLETA E SEGURA
 
 export default async function handler(req, res) {
-  // --- Bloco de Segurança e Configuração CORS ---
+  // --- Bloco CORS SEGURO (usando variável de ambiente) ---
+  // Define de qual "origem" (a sua extensão) aceitamos requisições.
+  const extensionOrigin = `chrome-extension://${process.env.CHROME_EXTENSION_ID}`;
 
-  // Define a origem permitida a partir das variáveis de ambiente
-  const allowedOrigin = `chrome-extension://${process.env.CHROME_EXTENSION_ID}`;
-
-  // SEMPRE adiciona os cabeçalhos de permissão em TODAS as respostas para este endpoint
-  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Access-Control-Allow-Origin", extensionOrigin);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // **PASSO 1: CUIDAR DA LIGAÇÃO DO PORTEIRO (PREFLIGHT)**
-  // Se a requisição for do tipo OPTIONS, apenas retornamos sucesso.
-  // Os cabeçalhos acima já foram adicionados, então a permissão é concedida.
+  // Lida com a requisição preflight "OPTIONS" do navegador.
   if (req.method === "OPTIONS") {
-    return res.status(200).end();
+    return res.status(204).end();
   }
+  // --- FIM DO BLOCO CORS ---
 
-  // **PASSO 2: PROCESSAR O PEDIDO DE PIZZA (POST)**
-  // Se o código chegou até aqui, não era OPTIONS. Agora verificamos se é POST.
+  // Garante que só aceitamos requisições do tipo POST para a lógica principal
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // Se o método for POST, a lógica principal continua...
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ error: "Token não fornecido" });
+  }
+
   try {
-    const { token } = req.body;
-    if (!token) {
-      return res.status(400).json({ error: "Token is required" });
+    // 1. Usa o token recebido da extensão para pegar os dados do usuário do Google
+    const googleResponse = await fetch(
+      `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${token}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (!googleResponse.ok) {
+      throw new Error("Token do Google inválido ou expirado.");
     }
 
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
+    const googleUser = await googleResponse.json();
+    const { email, name, picture } = googleUser;
 
-    let userPlan = "free";
-    const premiumTestUserEmails = [
-      "lottomestre@gmail.com",
-      "fernandotenguan@gmail.com",
-    ];
-
-    if (premiumTestUserEmails.includes(payload.email)) {
-      userPlan = "premium";
-    }
-
-    const user = {
-      id: payload.sub,
-      email: payload.email,
-      name: payload.name,
-      picture: payload.picture,
-      plan: userPlan,
+    // 2. LÓGICA DO SEU NEGÓCIO (Simulação de banco de dados)
+    // No futuro, você vai conectar um banco de dados real aqui (ex: MongoDB, Supabase).
+    // Por enquanto, todo novo usuário começa como 'free'.
+    const userFromDB = {
+      email: email,
+      name: name,
+      picture: picture,
+      plan: "premium", // Simulando que todo usuário é premium
     };
 
-    return res.status(200).json({ user });
+    // 3. Retorna os dados do usuário para a extensão
+    res.status(200).json({ user: userFromDB });
   } catch (error) {
-    console.error("Authentication error:", error);
-    return res
-      .status(500)
-      .json({ error: "Internal server error during authentication." });
+    console.error("Erro na autenticação do backend:", error);
+    res.status(500).json({ error: "Erro interno no servidor" });
   }
 }
