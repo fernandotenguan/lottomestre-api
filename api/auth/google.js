@@ -48,11 +48,25 @@ export default async function handler(req, res) {
     // 2. LÓGICA DO SEU NEGÓCIO (Simulação de banco de dados)
     // No futuro, você vai conectar um banco de dados real aqui (ex: MongoDB, Supabase).
     // Por enquanto, todo novo usuário começa como 'free'.
-    const userFromDB = {
-      email: email,
-      name: name,
-      picture: picture,
-      plan: "free",
+    // --- LÓGICA DE DEFINIÇÃO DE PLANO (TEMPORÁRIA PARA TESTES) ---
+
+    let userPlan = "free"; // Por padrão, todos são 'free'
+
+    // Defina aqui o seu email (ou qualquer outro email de teste)
+    const premiumTestUserEmail = "fernando.tenguan@gmail.com";
+
+    // Verifica se o email do usuário que fez login é o da nossa lista de teste
+    if (payload.email === premiumTestUserEmail) {
+      userPlan = "premium"; // Se for, ele se torna premium!
+    }
+
+    // Monta o objeto do usuário com o plano dinâmico
+    const user = {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+      plan: userPlan, // Usa a variável que definimos acima
     };
 
     // 3. Retorna os dados do usuário para a extensão
