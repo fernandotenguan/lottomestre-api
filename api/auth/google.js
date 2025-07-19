@@ -1,78 +1,79 @@
-// api/auth/google.js - VERSÃO COMPLETA E SEGURA
+// Importa a biblioteca do Google para verificar o token
+import { OAuth2Client } from "google-auth-library";
 
+// Cria uma instância do cliente OAuth2
+const client = new OAuth2Client();
+
+// A função principal que a Vercel vai executar
 export default async function handler(req, res) {
-  // --- Bloco CORS SEGURO (usando variável de ambiente) ---
-  // Define de qual "origem" (a sua extensão) aceitamos requisições.
-  const extensionOrigin = `chrome-extension://${process.env.CHROME_EXTENSION_ID}`;
+  // --- Bloco de Segurança e Configuração CORS ---
 
-  res.setHeader("Access-Control-Allow-Origin", extensionOrigin);
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  // Lida com a requisição preflight "OPTIONS" do navegador.
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-  // --- FIM DO BLOCO CORS ---
-
-  // Garante que só aceitamos requisições do tipo POST para a lógica principal
+  // 1. Permitir apenas o método POST
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const { token } = req.body;
+  // 2. Definir o ID da extensão a partir das variáveis de ambiente
+  const allowedOrigin = `chrome-extension://${process.env.CHROME_EXTENSION_ID}`;
 
-  if (!token) {
-    return res.status(400).json({ error: "Token não fornecido" });
+  // 3. Verificar se a requisição veio da nossa extensão
+  if (req.headers.origin !== allowedOrigin) {
+    return res.status(403).json({ error: "Forbidden: Origin not allowed" });
   }
 
-  try {
-    // 1. Usa o token recebido da extensão para pegar os dados do usuário do Google
-    const googleResponse = await fetch(
-      `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${token}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      }
-    );
+  // 4. Configurar cabeçalhos CORS para a resposta
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    if (!googleResponse.ok) {
-      throw new Error("Token do Google inválido ou expirado.");
+  // 5. Responder a requisições OPTIONS (pre-flight)
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  // --- Bloco de Autenticação e Lógica de Plano ---
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ error: "Token is required" });
     }
 
-    const googleUser = await googleResponse.json();
-    const { email, name, picture } = googleUser;
+    // Verifica o token com o Google
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID, // O client ID do seu projeto Google Cloud
+    });
+    const payload = ticket.getPayload();
 
-    // 2. LÓGICA DO SEU NEGÓCIO (Simulação de banco de dados)
-    // No futuro, você vai conectar um banco de dados real aqui (ex: MongoDB, Supabase).
-    // Por enquanto, todo novo usuário começa como 'free'.
-    // --- LÓGICA DE DEFINIÇÃO DE PLANO (TEMPORÁRIA PARA TESTES) ---
-
+    // --- LÓGICA DA "LISTA VIP" (TEMPORÁRIA PARA TESTES) ---
     let userPlan = "free"; // Por padrão, todos são 'free'
 
-    // Defina aqui o seu email (ou qualquer outro email de teste)
-    const premiumTestUserEmail = "fernando.tenguan@gmail.com";
+    // Crie sua lista de e-mails premium aqui!
+    const premiumTestUserEmails = [
+      "fernandotenguan@gmail.com",
+      "lottomestre@gmail.com",
+    ];
 
-    // Verifica se o email do usuário que fez login é o da nossa lista de teste
-    if (payload.email === premiumTestUserEmail) {
-      userPlan = "premium"; // Se for, ele se torna premium!
+    // Verifica se o email do usuário logado ESTÁ NA LISTA
+    if (premiumTestUserEmails.includes(payload.email)) {
+      userPlan = "premium"; // Se estiver, o plano dele é premium!
     }
 
-    // Monta o objeto do usuário com o plano dinâmico
+    // Monta o objeto de usuário com o plano dinâmico
     const user = {
       id: payload.sub,
       email: payload.email,
       name: payload.name,
       picture: payload.picture,
-      plan: userPlan, // Usa a variável que definimos acima
+      plan: userPlan,
     };
 
-    // 3. Retorna os dados do usuário para a extensão
-    res.status(200).json({ user: userFromDB });
+    // Envia a resposta de sucesso para a extensão
+    return res.status(200).json({ user });
   } catch (error) {
-    console.error("Erro na autenticação do backend:", error);
-    res.status(500).json({ error: "Erro interno no servidor" });
+    console.error("Authentication error:", error);
+    return res
+      .status(500)
+      .json({ error: "Internal server error during authentication." });
   }
 }
