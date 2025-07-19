@@ -1,16 +1,13 @@
 // api/auth/google.js
-
 export default async function handler(req, res) {
-  // --- NOVO BLOCO DE CÓDIGO PARA CORS ---
-  // Define de qual "origem" (a sua extensão) aceitamos requisições.
-  const extensionOrigin = `chrome-extension://${process.env.CHROME_EXTENSION_ID}`;
+  // --- SUBSTITUA O BLOCO CORS POR ESTE ---
+  // Permite requisições de QUALQUER origem.
+  // Ótimo para testar, mas deve ser trocado de volta depois.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  res.setHeader("Access-Control-Allow-Origin", extensionOrigin);
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  // O navegador envia uma requisição "OPTIONS" primeiro para checar as permissões (preflight).
-  // Se for uma, apenas respondemos "OK" (status 204) com os cabeçalhos acima.
+  // Lida com a requisição preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
