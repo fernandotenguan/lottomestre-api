@@ -1,43 +1,43 @@
-// Importa a biblioteca do Stripe que instalamos
 import Stripe from "stripe";
 
-// Inicializa o Stripe com a nossa chave secreta, que está segura nas variáveis de ambiente
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// A função principal do nosso endpoint
 export default async function handler(req, res) {
-  // Permitimos apenas requisições POST para este endpoint
+  // --- Bloco de Segurança e Configuração CORS (CORRIGIDO) ---
+  const allowedOrigin = `chrome-extension://${process.env.CHROME_EXTENSION_ID}`;
+
+  // Adiciona os cabeçalhos de permissão em TODAS as respostas
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // Responde imediatamente a requisições pre-flight (OPTIONS)
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  // --- Fim do Bloco de Correção ---
+
+  // Agora, verificamos se o método é POST
   if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).end("Method Not Allowed");
+    return res.status(405).json({ error: "Method Not Allowed" });
   }
 
+  // A lógica principal continua a mesma
   try {
-    // =======================================================================
-    // PASSO IMPORTANTE: Obtenha o ID do Preço no seu painel do Stripe
-    // Vá em Produtos > LottoMestre Premium > role para baixo até a seção Preços.
-    // Clique nos três pontos (...) ao lado do preço e selecione "Copiar ID".
-    // O ID se parece com 'price_xxxxxxxxxxxxxx'.
-    // =======================================================================
-    const priceId = "prod_SiSEgGZlDvd6W4"; // <-- SUBSTITUA ESTE VALOR
+    const priceId = "price_1PZqWzCqj4aT0LgA7Q8qY1v8"; // MANTENHA O SEU ID DO PREÇO AQUI
 
-    // Cria a Sessão de Checkout no Stripe
     const session = await stripe.checkout.sessions.create({
-      // Itens que o usuário está comprando. No nosso caso, é a assinatura.
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
-      // Modo "subscription" é a chave para pagamentos recorrentes
       mode: "subscription",
-      // URLs para onde o usuário será redirecionado após a ação
       success_url: `https://lottomestre.com.br/sucesso?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `https://lottomestre.com.br/cancelou`,
     });
 
-    // Envia a URL da sessão de pagamento de volta para a extensão
     res.status(200).json({ url: session.url });
   } catch (err) {
     console.error("Stripe Error:", err.message);
