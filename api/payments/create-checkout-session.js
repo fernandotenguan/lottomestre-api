@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
   // A lógica principal continua a mesma
   try {
-    const priceId = "prod_SiSEgGZlDvd6W4"; // MANTENHA O SEU ID DO PREÇO AQUI
+    const priceId = "price_1Rn1KKCok65o5YjzluxHbJk5"; // MANTENHA O SEU ID DO PREÇO AQUI
 
     const session = await stripe.checkout.sessions.create({
       line_items: [
