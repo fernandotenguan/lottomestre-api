@@ -44,8 +44,8 @@ export default async function handler(req, res) {
 
     let userPlan = "free";
     const premiumTestUserEmails = [
-      "fernandotenguan@gmail.com",
-      "seu.outro.email.de.teste@exemplo.com",
+      "fernando.tenguan@gmail.com",
+      "lottomestre@exemplo.com",
     ];
 
     if (premiumTestUserEmails.includes(payload.email)) {
