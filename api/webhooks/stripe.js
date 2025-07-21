@@ -92,56 +92,111 @@ export default async function handler(req, res) {
     // VERSÃO CORRIGIDA E MAIS ROBUSTA
     case "customer.subscription.deleted": {
       const subscription = event.data.object;
-      const stripeCustomerId = subscription.customer;
 
-      console.log(
-        `Received 'customer.subscription.deleted' event for customer: ${stripeCustomerId}`
-      );
-
-      if (!stripeCustomerId) {
-        console.error(
-          "❌ Erro: stripeCustomerId não encontrado no evento de cancelamento."
+      // --- MELHORIA 1: Validação de Status ---
+      // Garante que só vamos agir se a assinatura estiver de fato cancelada ou terminada.
+      if (
+        subscription.status !== "canceled" &&
+        subscription.status !== "ended" &&
+        !subscription.cancel_at_period_end
+      ) {
+        console.log(
+          `Webhook 'subscription.deleted' recebido, mas o status é '${subscription.status}'. Nenhuma ação necessária.`
         );
         return res
           .status(200)
-          .json({ received: true, error: "Missing Customer ID" });
+          .json({ received: true, message: "Status did not require action." });
       }
+
+      const stripeCustomerId = subscription.customer;
 
       console.log(
-        `Attempting to revert user with Stripe Customer ID: ${stripeCustomerId} to 'free' plan.`
+        `😢 Assinatura cancelada para o cliente: ${stripeCustomerId}. Iniciando processo de downgrade.`
       );
 
-      const { data, error } = await supabase
-        .from("users")
-        .update({
-          plan: "free",
-          // Opcional, mas recomendado: Limpar o ID do cliente para evitar inconsistências
-          // Se o usuário assinar de novo, ele receberá um novo ID de qualquer forma.
-          // stripe_customer_id: null
-        })
-        .eq("stripe_customer_id", stripeCustomerId)
-        .select();
+      let user = null;
+      let error = null;
 
-      if (error) {
-        console.error(
-          "❌ Supabase error while reverting user to FREE:",
-          error.message
-        );
-        // Mesmo com erro, respondemos 200 ao Stripe para evitar reenvios.
-        // O erro fica no log para análise.
+      // --- MELHORIA 2: Lógica de Busca em Duas Etapas ---
+      // ETAPA 1: Tenta encontrar pelo ID do cliente (método preferencial)
+      const { data: userById, error: errorById } = await supabase
+        .from("users")
+        .select("id, email, name")
+        .eq("stripe_customer_id", stripeCustomerId)
+        .single(); // .single() espera encontrar 1 ou 0 resultados.
+
+      if (userById) {
+        user = userById;
       } else {
-        if (data && data.length > 0) {
-          console.log(
-            `✅ User with Stripe ID ${stripeCustomerId} successfully reverted to FREE.`
-          );
-          console.log("Updated user data:", data);
-        } else {
-          // ESTE É O LOG MAIS IMPORTANTE PARA DIAGNÓSTICO
-          console.warn(
-            `⚠️ No user found in Supabase with stripe_customer_id: ${stripeCustomerId}. No update was performed.`
-          );
+        // ETAPA 2: Se não encontrou pelo ID, tenta pelo e-mail (plano B)
+        console.warn(
+          `⚠️ Não encontrou usuário pelo stripe_customer_id. Tentando buscar pelo e-mail...`
+        );
+
+        // Para buscar por e-mail, primeiro precisamos pegar o e-mail do cliente no Stripe
+        const customer = await stripe.customers.retrieve(stripeCustomerId);
+        const customerEmail = customer.email;
+
+        if (customerEmail) {
+          const { data: userByEmail, error: errorByEmail } = await supabase
+            .from("users")
+            .select("id, email, name")
+            .eq("email", customerEmail)
+            .single();
+
+          if (userByEmail) {
+            user = userByEmail;
+          } else {
+            error = errorByEmail; // Guarda o erro da última tentativa
+          }
         }
       }
+
+      // Se encontramos o usuário por qualquer um dos métodos, atualiza o plano
+      if (user) {
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({ plan: "free" })
+          .eq("id", user.id); // Atualiza usando o ID único do usuário
+
+        if (updateError) {
+          console.error(
+            "❌ Erro ao reverter usuário para FREE:",
+            updateError.message
+          );
+        } else {
+          console.log(
+            `✅ Usuário ${user.email} (ID: ${user.id}) revertido para FREE com sucesso.`
+          );
+
+          // --- Lógica de envio de e-mail de cancelamento (Ato 3) ---
+          try {
+            await resend.emails.send({
+              from: "LottoMestre <contato@seudominio.com>", // MUDE PARA SEU DOMÍNIO
+              to: [user.email],
+              subject: "Sua assinatura LottoMestre foi cancelada",
+              html: `
+                <h1>Olá, ${user.name || "usuário"}.</h1>
+                <p>Confirmamos que sua assinatura do plano <strong>LottoMestre Premium</strong> foi cancelada.</p>
+                <p>Seu acesso aos recursos premium permanecerá ativo até o final do seu ciclo de faturamento atual.</p>
+                <p>Agradecemos por ter feito parte da nossa comunidade e esperamos te ver novamente em breve!</p>
+              `,
+            });
+            console.log(`✅ E-mail de cancelamento enviado para ${user.email}`);
+          } catch (emailError) {
+            console.error(
+              "❌ Erro ao enviar e-mail de cancelamento:",
+              emailError
+            );
+          }
+        }
+      } else {
+        console.error(
+          `❌ ERRO CRÍTICO: Não foi possível encontrar o usuário no Supabase nem pelo ID do cliente '${stripeCustomerId}' nem pelo e-mail associado. Erro:`,
+          error ? error.message : "Nenhum e-mail encontrado no cliente Stripe."
+        );
+      }
+
       break;
     }
 
