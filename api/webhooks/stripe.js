@@ -44,10 +44,20 @@ export default async function handler(req, res) {
     case "checkout.session.completed": {
       const session = event.data.object;
 
-      const userEmail = session.customer_details.email;
+      const userId = session.client_reference_id; // <-- MUITO MAIS SEGURO!
       const stripeCustomerId = session.customer;
 
-      console.log(`🎉 Pagamento bem-sucedido para o email: ${userEmail}`);
+      if (!userId) {
+        console.error(
+          "❌ Erro: client_reference_id (User ID) não encontrado na sessão do Stripe."
+        );
+        // Responda 200 para o Stripe, mas registre o erro grave.
+        return res
+          .status(200)
+          .json({ received: true, error: "Missing User ID" });
+      }
+
+      console.log(`🎉 Pagamento bem-sucedido para o usuário com ID: ${userId}`);
 
       // =============================================================
       //          LÓGICA REAL COM SUPABASE
@@ -60,7 +70,7 @@ export default async function handler(req, res) {
           plan: "premium",
           stripe_customer_id: stripeCustomerId,
         })
-        .eq("email", userEmail) // Encontra o usuário pelo email
+        .eq("id", userId) // <-- ENCONTRA PELO ID ÚNICO
         .select(); // Retorna os dados atualizados
 
       if (error) {

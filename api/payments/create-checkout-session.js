@@ -23,9 +23,16 @@ export default async function handler(req, res) {
     const priceId = "price_1Rn7lFCro1dORyGqPrqUinFx";
 
     // Pega o email do usuário enviado pelo frontend
-    const userEmail = req.body.userEmail || null;
+    const { userEmail, userId } = req.body;
+
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ error: { message: "User ID is missing." } });
+    }
 
     const session = await stripe.checkout.sessions.create({
+      client_reference_id: userId, // <-- ADICIONADO: Passa o ID do Supabase para o Stripe
       line_items: [
         {
           price: priceId,
@@ -40,11 +47,11 @@ export default async function handler(req, res) {
       //          COLE SEU LINK DO PORTAL DO CLIENTE AQUI
       // =============================================================
       // URL de Sucesso: Redireciona para o portal seguro do Stripe
-      success_url: "billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
+      success_url: "https://billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
 
       // URL de Cancelamento: Podemos usar a mesma URL. O cliente
       // simplesmente não estará logado se cancelar.
-      cancel_url: "billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
+      cancel_url: "https://billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
       // =============================================================
     });
 
