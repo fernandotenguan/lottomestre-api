@@ -43,15 +43,27 @@ export default async function handler(req, res) {
       // Pré-preenche o email do cliente na página de checkout
       customer_email: userEmail,
 
+      // ======================= ADICIONE ESTE BLOCO =======================
+      consent_collection: {
+        terms_of_service: "required", // Opcional, mas recomendado para ter termos de serviço
+      },
+      custom_text: {
+        terms_of_service_acceptance: {
+          message:
+            "Eu entendo e concordo com os Termos de Serviço. Sei que posso cancelar minha assinatura a qualquer momento e tenho 7 dias para solicitar o reembolso total, conforme o Direito de Arrependimento.",
+        },
+      },
+      // ===================================================================
+
       // =============================================================
       //          COLE SEU LINK DO PORTAL DO CLIENTE AQUI
       // =============================================================
       // URL de Sucesso: Redireciona para o portal seguro do Stripe
-      success_url: "https://billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
+      success_url: "https://lottomestre-api.vercel.app/sucesso",
 
       // URL de Cancelamento: Podemos usar a mesma URL. O cliente
       // simplesmente não estará logado se cancelar.
-      cancel_url: "https://billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
+      cancel_url: "https://lottomestre-api.vercel.app/cancelou",
       // =============================================================
     });
 
