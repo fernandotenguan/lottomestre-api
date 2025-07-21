@@ -1,8 +1,10 @@
 import Stripe from "stripe";
-import { supabase } from "../../lib/supabaseClient"; // Importamos nosso "ajudante" Supabase
+import { supabase } from "../../lib/supabaseClient";
+import { Resend } from "resend";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const config = {
   api: {
@@ -26,7 +28,6 @@ export default async function handler(req, res) {
 
   const rawBody = await getRawBody(req);
   const sig = req.headers["stripe-signature"];
-
   let event;
 
   try {
@@ -43,15 +44,13 @@ export default async function handler(req, res) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
-
-      const userId = session.client_reference_id; // <-- MUITO MAIS SEGURO!
+      const userId = session.client_reference_id;
       const stripeCustomerId = session.customer;
 
       if (!userId) {
         console.error(
-          "❌ Erro: client_reference_id (User ID) não encontrado na sessão do Stripe."
+          "❌ Erro: client_reference_id (User ID) não encontrado na sessão."
         );
-        // Responda 200 para o Stripe, mas registre o erro grave.
         return res
           .status(200)
           .json({ received: true, error: "Missing User ID" });
@@ -59,42 +58,55 @@ export default async function handler(req, res) {
 
       console.log(`🎉 Pagamento bem-sucedido para o usuário com ID: ${userId}`);
 
-      // =============================================================
-      //          LÓGICA REAL COM SUPABASE
-      // =============================================================
-
-      // Atualiza o usuário no banco de dados
       const { data, error } = await supabase
         .from("users")
-        .update({
-          plan: "premium",
-          stripe_customer_id: stripeCustomerId,
-        })
-        .eq("id", userId) // <-- ENCONTRA PELO ID ÚNICO
-        .select(); // Retorna os dados atualizados
+        .update({ plan: "premium", stripe_customer_id: stripeCustomerId })
+        .eq("id", userId)
+        .select()
+        .single(); // Use .single() para obter um único objeto, não um array
 
       if (error) {
         console.error(
           "❌ Erro ao atualizar usuário no Supabase:",
           error.message
         );
-        // Mesmo com erro no DB, respondemos 200 ao Stripe para evitar reenvios.
-        // O erro fica registrado no log para análise manual.
       } else {
+        // --- CORREÇÃO DO LOG E LÓGICA DE E-MAIL ADICIONADA ---
+        const updatedUser = data;
         console.log(
-          `✅ Usuário ${userEmail} atualizado para PREMIUM no banco de dados.`
+          `✅ Usuário ${updatedUser.email} atualizado para PREMIUM no banco de dados.`
         );
-        console.log("Dados atualizados:", data);
+        console.log("Dados atualizados:", updatedUser);
+
+        try {
+          const userName = updatedUser.name || "Usuário";
+
+          await resend.emails.send({
+            from: "LottoMestre <contato@seudominio.com>", // MUDE PARA SEU DOMÍNIO VERIFICADO
+            to: [updatedUser.email],
+            subject: "Bem-vindo ao LottoMestre Premium! 🎉",
+            html: `
+              <h1>Olá, ${userName}!</h1>
+              <p>Sua assinatura do plano <strong>LottoMestre Premium</strong> foi confirmada. Obrigado!</p>
+              <p>Para gerenciar sua assinatura, acesse nosso portal seguro:</p>
+              <a href="https://billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00"><strong>Acessar Portal do Cliente</strong></a>
+              <br><br>
+              <p>Boas apostas!</p>
+            `,
+          });
+          console.log(
+            `✅ E-mail de boas-vindas enviado para ${updatedUser.email}`
+          );
+        } catch (emailError) {
+          console.error("❌ Erro ao enviar e-mail de boas-vindas:", emailError);
+        }
       }
       break;
     }
 
-    // VERSÃO CORRIGIDA E MAIS ROBUSTA
     case "customer.subscription.deleted": {
       const subscription = event.data.object;
 
-      // --- MELHORIA 1: Validação de Status ---
-      // Garante que só vamos agir se a assinatura estiver de fato cancelada ou terminada.
       if (
         subscription.status !== "canceled" &&
         subscription.status !== "ended" &&
@@ -117,23 +129,18 @@ export default async function handler(req, res) {
       let user = null;
       let error = null;
 
-      // --- MELHORIA 2: Lógica de Busca em Duas Etapas ---
-      // ETAPA 1: Tenta encontrar pelo ID do cliente (método preferencial)
-      const { data: userById, error: errorById } = await supabase
+      const { data: userById } = await supabase
         .from("users")
         .select("id, email, name")
         .eq("stripe_customer_id", stripeCustomerId)
-        .single(); // .single() espera encontrar 1 ou 0 resultados.
+        .single();
 
       if (userById) {
         user = userById;
       } else {
-        // ETAPA 2: Se não encontrou pelo ID, tenta pelo e-mail (plano B)
         console.warn(
           `⚠️ Não encontrou usuário pelo stripe_customer_id. Tentando buscar pelo e-mail...`
         );
-
-        // Para buscar por e-mail, primeiro precisamos pegar o e-mail do cliente no Stripe
         const customer = await stripe.customers.retrieve(stripeCustomerId);
         const customerEmail = customer.email;
 
@@ -147,17 +154,16 @@ export default async function handler(req, res) {
           if (userByEmail) {
             user = userByEmail;
           } else {
-            error = errorByEmail; // Guarda o erro da última tentativa
+            error = errorByEmail;
           }
         }
       }
 
-      // Se encontramos o usuário por qualquer um dos métodos, atualiza o plano
       if (user) {
         const { error: updateError } = await supabase
           .from("users")
           .update({ plan: "free" })
-          .eq("id", user.id); // Atualiza usando o ID único do usuário
+          .eq("id", user.id);
 
         if (updateError) {
           console.error(
@@ -169,10 +175,9 @@ export default async function handler(req, res) {
             `✅ Usuário ${user.email} (ID: ${user.id}) revertido para FREE com sucesso.`
           );
 
-          // --- Lógica de envio de e-mail de cancelamento (Ato 3) ---
           try {
             await resend.emails.send({
-              from: "LottoMestre <contato@seudominio.com>", // MUDE PARA SEU DOMÍNIO
+              from: "LottoMestre <contato@seudominio.com>", // MUDE PARA SEU DOMÍNIO VERIFICADO
               to: [user.email],
               subject: "Sua assinatura LottoMestre foi cancelada",
               html: `
@@ -192,7 +197,7 @@ export default async function handler(req, res) {
         }
       } else {
         console.error(
-          `❌ ERRO CRÍTICO: Não foi possível encontrar o usuário no Supabase nem pelo ID do cliente '${stripeCustomerId}' nem pelo e-mail associado. Erro:`,
+          `❌ ERRO CRÍTICO: Não foi possível encontrar o usuário no Supabase. Cliente Stripe: '${stripeCustomerId}'. Erro:`,
           error ? error.message : "Nenhum e-mail encontrado no cliente Stripe."
         );
       }
@@ -204,6 +209,5 @@ export default async function handler(req, res) {
       console.log(`Evento não tratado do tipo ${event.type}`);
   }
 
-  // Responde 200 ao Stripe para confirmar o recebimento
   res.status(200).json({ received: true });
 }
