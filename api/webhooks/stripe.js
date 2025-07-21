@@ -89,34 +89,58 @@ export default async function handler(req, res) {
       break;
     }
 
+    // VERSÃO CORRIGIDA E MAIS ROBUSTA
     case "customer.subscription.deleted": {
       const subscription = event.data.object;
       const stripeCustomerId = subscription.customer;
 
       console.log(
-        `😢 Assinatura cancelada para o cliente: ${stripeCustomerId}`
+        `Received 'customer.subscription.deleted' event for customer: ${stripeCustomerId}`
       );
 
-      // =============================================================
-      //          LÓGICA REAL DE CANCELAMENTO
-      // =============================================================
+      if (!stripeCustomerId) {
+        console.error(
+          "❌ Erro: stripeCustomerId não encontrado no evento de cancelamento."
+        );
+        return res
+          .status(200)
+          .json({ received: true, error: "Missing Customer ID" });
+      }
+
+      console.log(
+        `Attempting to revert user with Stripe Customer ID: ${stripeCustomerId} to 'free' plan.`
+      );
+
       const { data, error } = await supabase
         .from("users")
         .update({
           plan: "free",
-          // Opcional: você pode querer limpar o stripe_customer_id também
+          // Opcional, mas recomendado: Limpar o ID do cliente para evitar inconsistências
+          // Se o usuário assinar de novo, ele receberá um novo ID de qualquer forma.
           // stripe_customer_id: null
         })
-        .eq("stripe_customer_id", stripeCustomerId) // Encontra o usuário pelo ID do Stripe
+        .eq("stripe_customer_id", stripeCustomerId)
         .select();
 
       if (error) {
-        console.error("❌ Erro ao reverter usuário para FREE:", error.message);
-      } else {
-        console.log(
-          `✅ Usuário com Stripe ID ${stripeCustomerId} revertido para FREE.`
+        console.error(
+          "❌ Supabase error while reverting user to FREE:",
+          error.message
         );
-        console.log("Dados atualizados:", data);
+        // Mesmo com erro, respondemos 200 ao Stripe para evitar reenvios.
+        // O erro fica no log para análise.
+      } else {
+        if (data && data.length > 0) {
+          console.log(
+            `✅ User with Stripe ID ${stripeCustomerId} successfully reverted to FREE.`
+          );
+          console.log("Updated user data:", data);
+        } else {
+          // ESTE É O LOG MAIS IMPORTANTE PARA DIAGNÓSTICO
+          console.warn(
+            `⚠️ No user found in Supabase with stripe_customer_id: ${stripeCustomerId}. No update was performed.`
+          );
+        }
       }
       break;
     }
