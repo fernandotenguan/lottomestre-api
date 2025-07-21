@@ -34,8 +34,6 @@ export default async function handler(req, res) {
         },
       ],
       mode: "subscription",
-      success_url: `https://lottomestre.com.br/sucesso?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `https://lottomestre.com.br/cancelou`,
     });
 
     res.status(200).json({ url: session.url });
