@@ -59,11 +59,11 @@ export default async function handler(req, res) {
       //          COLE SEU LINK DO PORTAL DO CLIENTE AQUI
       // =============================================================
       // URL de Sucesso: Redireciona para o portal seguro do Stripe
-      success_url: "https://lottomestre-api.vercel.app/sucesso",
+      success_url: "https://lottomestre-api.vercel.app/sucesso.html",
 
       // URL de Cancelamento: Podemos usar a mesma URL. O cliente
       // simplesmente não estará logado se cancelar.
-      cancel_url: "https://lottomestre-api.vercel.app/cancelou",
+      cancel_url: "https://lottomestre-api.vercel.app/cancelou.html",
       // =============================================================
     });
 
