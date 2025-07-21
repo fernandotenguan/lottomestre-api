@@ -3,28 +3,27 @@ import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export default async function handler(req, res) {
-  // --- Bloco de Segurança e Configuração CORS (CORRIGIDO) ---
+  // --- Bloco CORS e verificação de método (já está correto) ---
   const allowedOrigin = `chrome-extension://${process.env.CHROME_EXTENSION_ID}`;
-
-  // Adiciona os cabeçalhos de permissão em TODAS as respostas
   res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // Responde imediatamente a requisições pre-flight (OPTIONS)
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
-  // --- Fim do Bloco de Correção ---
 
-  // Agora, verificamos se o método é POST
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // A lógica principal continua a mesma
+  // --- Lógica Principal ---
   try {
-    const priceId = "price_1Rn7lFCro1dORyGqPrqUinFx"; // MANTENHA O SEU ID DO PREÇO AQUI
+    // Lembre-se de usar o ID do Preço do seu ambiente de PRODUÇÃO
+    const priceId = "price_1Rn7lFCro1dORyGqPrqUinFx";
+
+    // Pega o email do usuário enviado pelo frontend
+    const userEmail = req.body.userEmail || null;
 
     const session = await stripe.checkout.sessions.create({
       line_items: [
@@ -34,6 +33,19 @@ export default async function handler(req, res) {
         },
       ],
       mode: "subscription",
+      // Pré-preenche o email do cliente na página de checkout
+      customer_email: userEmail,
+
+      // =============================================================
+      //          COLE SEU LINK DO PORTAL DO CLIENTE AQUI
+      // =============================================================
+      // URL de Sucesso: Redireciona para o portal seguro do Stripe
+      success_url: "billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
+
+      // URL de Cancelamento: Podemos usar a mesma URL. O cliente
+      // simplesmente não estará logado se cancelar.
+      cancel_url: "billing.stripe.com/p/login/aFacN4gUp7OP4Bw4YWfjG00",
+      // =============================================================
     });
 
     res.status(200).json({ url: session.url });
