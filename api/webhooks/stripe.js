@@ -72,8 +72,15 @@ export default async function handler(req, res) {
         );
       } else {
         console.log(`✅ Usuário ${updatedUser.email} atualizado para PREMIUM.`);
-        // Chamada da função de e-mail modularizada
-        await sendWelcomePremiumEmail(updatedUser.name, updatedUser.email);
+
+        try {
+          await sendWelcomePremiumEmail(updatedUser.name, updatedUser.email);
+          console.log(
+            `✅ E-mail de boas-vindas enviado para ${updatedUser.email}`
+          );
+        } catch (emailError) {
+          console.error("❌ Erro ao enviar e-mail de boas-vindas:", emailError);
+        }
       }
       break;
     }
@@ -112,12 +119,20 @@ export default async function handler(req, res) {
           console.log(
             `✅ Usuário ${user.email} revertido para FREE com sucesso.`
           );
-          // Chamada da função de e-mail modularizada
-          await sendCancellationEmail(
-            user.name,
-            user.email,
-            subscription.ended_at || subscription.canceled_at
-          );
+
+          try {
+            await sendCancellationEmail(
+              user.name,
+              user.email,
+              subscription.ended_at || subscription.canceled_at
+            );
+            console.log(`✅ E-mail de cancelamento enviado para ${user.email}`);
+          } catch (emailError) {
+            console.error(
+              "❌ Erro ao enviar e-mail de cancelamento:",
+              emailError
+            );
+          }
         }
       }
       break;
