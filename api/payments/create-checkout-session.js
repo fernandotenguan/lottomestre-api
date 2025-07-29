@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   // --- Lógica Principal ---
   try {
     // Lembre-se de usar o ID do Preço do seu ambiente de PRODUÇÃO
-    const priceId = "price_1Rn1KKCok65o5YjzluxHbJk5";
+    const priceId = "price_1Rn7lFCro1dORyGqPrqUinFx";
 
     // Pega o email do usuário enviado pelo frontend
     const { userEmail, userId } = req.body;
