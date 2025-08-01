@@ -46,6 +46,7 @@ export default async function handler(req, res) {
       "lottomestre@gmail.com",
       "lucastgs92@gmail.com",
       "matheus.cherutti25@gmail.com",
+      "brunnoz77@gmail.com",
     ];
 
     // 1. VERIFICAÇÃO VIP PRIMEIRO!
